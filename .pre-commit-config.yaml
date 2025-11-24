@@ -1,0 +1,168 @@
+minimum_pre_commit_version: "3.5.0"
+
+# 默认运行阶段。
+# 注意：设置为 [manual] 意味着 `git commit` 时不会自动运行，必须手动执行 `pre-commit run -a`。
+# 如果想在提交时自动运行，请改为 [commit] 或删除此行。
+default_stages: [manual]
+
+ci:
+  autoupdate_schedule: quarterly
+  # CI 环境通常不需要 clang-tidy 这种依赖编译环境的重型工具，建议跳过
+  skip: [clang-tidy-conda]
+
+# --- 全局排除列表 ---
+# 无论工具原本针对什么文件，都绝对不会检查以下目录/文件
+exclude: |
+  (?x)^(
+      artifacts/|
+      build/|
+      cmake-build-.*/|
+      dist/|
+      .*/__pycache__/|
+      __pycache__/|
+      .*/\.mypy_cache/|
+      \.mypy_cache/|
+      .*/\.ruff_cache/|
+      \.ruff_cache/|
+      .*/\.venv/|
+      \.venv/|
+      venv/|
+      env/|
+      \.idea/|
+      \.vscode/|
+      \.git/|
+      third_party/|
+      external/|
+      vendor/|
+      uv.lock|
+      poetry.lock|
+      package-lock.json
+  )
+
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  # -------------------------------------------------------------------------
+  # 通用基础检查 (Generic)
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: pretty-format-json
+        args: ["--autofix", "--no-sort-keys"] # 不自动排序键，防止破坏逻辑顺序
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ['--maxkb=10000'] # 提高大文件阈值到 10MB
+      - id: forbid-new-submodules
+
+  # -------------------------------------------------------------------------
+  # Python: Ruff (Linting + Formatting)
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0  # 使用较新的稳定版本
+    hooks:
+      # Lint: 静态分析与自动修复
+      - id: ruff
+        name: ruff-lint (global)
+        types: [python]  # 匹配所有 .py 文件，不限目录
+        args: ["--fix", "--unsafe-fixes"]
+      
+      # Format: 代码格式化 (替代 Black)
+      - id: ruff-format
+        name: ruff-format (global)
+        types: [python]
+
+  # -------------------------------------------------------------------------
+  # Python: MyPy (Type Checking)
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.1
+    hooks:
+      - id: mypy
+        name: mypy (global)
+        types_or: [python, pyi] # 检查所有 python 源码和存根文件
+        args:
+          - --ignore-missing-imports
+          - --check-untyped-defs
+          - --explicit-package-bases # 帮助 mypy 在复杂目录结构中找到包
+        # 如果 mypy 需要依赖第三方库（如 types-requests），请在这里添加
+        additional_dependencies: []
+
+  # -------------------------------------------------------------------------
+  # C/C++: Clang-Format
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        name: clang-format (global)
+        # 匹配 C, C++, C#, Objective-C 等相关文件
+        types_or: [c++, c, cuda] 
+
+  # -------------------------------------------------------------------------
+  # C/C++: Clang-Tidy (Static Analysis)
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/quantco/pre-commit-mirrors-clang-tidy
+    rev: 18.1.1
+    hooks:
+      - id: clang-tidy-conda
+        name: clang-tidy (global)
+        types_or: [c++, c, cuda]
+        # 注意：Clang-tidy 仍然强烈依赖 compile_commands.json
+        # 如果项目中不同目录有不同的构建配置，全局运行可能会报错
+        args: ["-p=build"]
+        # 建议：如果不需要每次都跑这个耗时任务，可以在本地手动触发
+
+  # -------------------------------------------------------------------------
+  # Shell / Bash
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: shellcheck (global)
+        types: [shell] # 自动匹配 .sh, .bash, .zsh 以及有 shell shebang 的文件
+        args: ["--severity=warning"]
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.8.0
+    hooks:
+      - id: shfmt
+        name: shfmt (global)
+        types: [shell]
+        args: ["-i", "2", "-ci"] # 缩进2空格，缩进 switch case
+
+  # -------------------------------------------------------------------------
+  # Markdown
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.17
+    hooks:
+      - id: mdformat
+        name: mdformat (global)
+        types: [markdown] # 匹配所有 .md 文件
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat-frontmatter # 支持 hexo/jekyll 等头部元数据
+          - mdformat-footnote
+
+  # -------------------------------------------------------------------------
+  # Spell Check (Codespell)
+  # -------------------------------------------------------------------------
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        name: codespell (global)
+        # 排除特定扩展名或文件（如锁文件、图像数据等）
+        types_or: [python, markdown, c++, c, shell, toml, yaml]
+        args: ["-L", "nd,te,ba"] # 忽略常见的误报单词

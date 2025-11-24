@@ -1,0 +1,22 @@
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  portability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -readability-identifier-naming
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(cpp/|include/|src/)'
+AnalyzeTemporaryDtors: true
+FormatStyle: none
+
+CheckOptions:
+  - key: modernize-use-nullptr.NullMacros
+    value: 'NULL'
+  - key: modernize-loop-convert.MinConfidence
+    value: reasonable

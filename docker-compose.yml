@@ -1,0 +1,56 @@
+version: "2.3"
+
+services:
+  engine:
+    image: hub.infervision.com/algo/radiology-ct-engine:${IMAGE_VERSION}
+    runtime: nvidia
+    entrypoint: python example/main.py # 执行入口
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      network: host
+    privileged: true
+    environment:
+      - TZ=Asia/Shanghai
+      - CUDA_CACHE_MAXSIZE=2147483647
+      - CUDA_CACHE_DISABLE=0
+      - CUDA_CACHE_PATH=/tmp/cuda_cache
+      - INPUT_PATH=data/input
+      - OUTPUT_PATH=data/output
+      - MODEL_PATH=model/ct_radiology_m1.0.0
+      - LOG_DIR=log
+      - GPUS=0
+      # 三个 engine 开关
+      - OPEN_CT_CHEST=1
+      - OPEN_CT_NECK=1
+      - OPEN_CT_HEART=1
+      # ct_chest 子服务开关
+      - OPEN_NODULE=1
+      - OPEN_LUNG_VR=1
+      - OPEN_FRACTURE=1
+      - OPEN_PNEUMONIA=1
+      - OPEN_NODULE5MM=1
+      - OPEN_LUNG_ANALYSIS=1
+      - OPEN_PH=1
+      - OPEN_NODULE_VESSEL_ANALYSIS=1
+      - OPEN_NODULE_MIP=1
+      - OPEN_NODULE_PLEURAL_DISTANCE=1
+      - OPEN_BMD=1
+      - OPEN_CALCIFICATION_SCORE=1  
+      # ct_neck 子服务开关
+      - OPEN_MODEL=vessel_seg:1 save_png:0 color:1 sub_color:1 plaque:1 stent:1 aneurysm:1 headstegnosis:1 willis:1 bone:1 vr:1 line:1 stenosis:1 find_vessel:1
+      # ct_heart 子服务开关
+      - OPEN_HEART=1
+      - OPEN_CALCIFICATION=1
+      # 是否因为没有开子引擎而触发对应任务失败计数
+      - BYPASS_VOID_SERVICE_TASK=1
+    volumes:
+      - /media:/media
+      - ./model/:/service/model/
+      - ./log/:/service/log/
+      - ./data/:/service/data/
+    logging:
+      driver: json-file
+      options:
+        max-size: "10M"
+        max-file: "5"

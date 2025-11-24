@@ -1,0 +1,275 @@
+stages:
+  - build # 构建
+  - lint # 检查
+  - test # 测试
+  - release # 发布
+  - test_k8s_perf_1 # 性能测试
+  - test_k8s_perf_3 # 性能测试
+  - test_k8s_consis # 一致性测试
+  - test_k8s_eval # 评估测试
+
+variables:
+  BUILD_IMAGE: hub.infervision.com/algo/builder:alpine-1.29.2 # 构建专用镜像
+  LINT_IMAGE: hub.infervision.com/algo/linter:2.0.4a3 # 代码检查专用镜像
+  # CI 中生成镜像的名称
+  CACHE_IMAGE_NAME: hub.infervision.com/algo/radiology-ct-engine # 最新构建的版本
+  DEV_IMAGE_NAME: hub.infervision.com/algo/radiology-ct-engine:dev-${CI_PIPELINE_IID} # 开发版本
+  PROD_IMAGE_NAME: hub.infervision.com/algo/radiology-ct-engine:${CI_COMMIT_TAG} # 生产版本
+
+build-image-job:
+  image: ${BUILD_IMAGE}
+  stage: build
+  before_script:
+    # 添加私钥，用于更新 submodule
+    - eval `ssh-agent -s`
+    - echo "$SSH_PRIVATE_KEY" | ssh-add -
+    # 拉取子模块
+    - git submodule sync --recursive && git submodule update --init --recursive --force
+    - git submodule status
+    # 登录 CI_REGISTRY
+    - docker login -u "${CI_REGISTRY_USER}" --password "${CI_REGISTRY_PASSWORD}" ${CI_REGISTRY}
+  script:
+    - DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile -t ${DEV_IMAGE_NAME} --cache-from ${CACHE_IMAGE_NAME} --build-arg dsa_tag=${CI_JOB_ID}+${CI_COMMIT_TAG} .
+    # - DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile -t ${DEV_IMAGE_NAME} --build-arg dsa_tag=${CI_JOB_ID}+${CI_COMMIT_TAG} .
+    - docker push ${CACHE_IMAGE_NAME}
+    - docker push ${DEV_IMAGE_NAME}
+    - docker images ${DEV_IMAGE_NAME}
+
+lint-job:
+  image: ${DEV_IMAGE_NAME}
+  stage: lint
+  script:
+    # - poetry install # install dev packages
+    - SKIP=pytest pre-commit run --all-files
+  only:
+    - branches
+
+test-build-package-job:
+  image: ${LINT_IMAGE}
+  stage: test
+  before_script:
+    # 添加私钥，用于更新 submodule
+    - eval `ssh-agent -s`
+    - echo "$SSH_PRIVATE_KEY" | ssh-add -
+    # 拉取子模块
+    - git submodule sync --recursive && git submodule update --init --recursive --force
+    - git submodule status
+  script:
+    - sed -i 's/python = "3.11.5"/python = "~3.11.5"/' pyproject.toml
+    - poetry build
+  only:
+    - branches
+  artifacts:
+    paths:
+      - dist/
+  when: manual
+
+test-deploy-k8s-performance-job:
+  image: ${LINT_IMAGE}
+  stage: test
+  needs: [build-image-job]
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance dev-${CI_PIPELINE_IID} ${MODEL_NAME} 结节_全肺_肺炎_骨折_骨密度+头颈全开+冠脉全开
+  only:
+    - branches
+  when: manual
+
+release-package-job: # pyproject.yaml 待升级
+  image: ${LINT_IMAGE}
+  stage: release
+  allow_failure: true
+  before_script:
+    # 添加私钥，用于更新 submodule
+    - eval `ssh-agent -s`
+    - echo "$SSH_PRIVATE_KEY" | ssh-add -
+    # 拉取子模块
+    - git submodule sync --recursive && git submodule update --init --recursive --force
+    - git submodule status
+  script:
+    # check: $CI_COMMIT_TAG vs $POETRY_VERSION
+    - POETRY_VERSION=$(poetry version | cut -d " " -f 2)
+    - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG#*-} 
+    - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG_MIDDLE%-*}
+    - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG_MIDDLE//m/}
+    - if [ "$CI_COMMIT_TAG_MIDDLE" != "$POETRY_VERSION" ]; then echo "tag($CI_COMMIT_TAG_MIDDLE) != poetry version($POETRY_VERSION)" && exit 1; fi
+    # package: build & publish
+    - sed -i 's/python = "3.11.5"/python = "~3.11.5"/' pyproject.toml
+    - poetry build
+    - poetry config repositories.infervision ${PIP_REGISTRY}
+    - poetry publish -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} -r infervision -n
+  only:
+    - tags
+
+release-image-job:
+  image: ${BUILD_IMAGE}
+  stage: release
+  needs: [build-image-job]
+  before_script:
+    - docker login -u "${CI_REGISTRY_USER}" --password "${CI_REGISTRY_PASSWORD}" ${CI_REGISTRY}
+  script:
+    # check: -m in tag
+    - echo "tag image ..."
+    - docker tag ${DEV_IMAGE_NAME} ${PROD_IMAGE_NAME}
+    - echo "push image ..."
+    - docker push ${PROD_IMAGE_NAME}
+    - docker images ${PROD_IMAGE_NAME}
+  only:
+    - tags
+
+perf_nodule:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 结节
+  only:
+    - tags
+  when: manual
+
+perf_fracture:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 骨折
+  only:
+    - tags
+  when: manual
+
+perf_nodule_fracture:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 结节_骨折
+  only:
+    - tags
+  when: manual
+
+perf_chest_c5:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 结节_全肺_肺炎_骨折_骨密度
+  only:
+    - tags
+  when: manual
+
+perf_chest_c6:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 结节_全肺_肺炎_骨折_骨密度_钙化积分
+  only:
+    - tags
+  when: manual
+
+perf_chest:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 胸肺全开
+  only:
+    - tags
+  when: manual
+
+perf_neck:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 头颈全开
+  only:
+    - tags
+  when: manual
+
+perf_coronary:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 冠脉增强
+  only:
+    - tags
+  when: manual
+
+perf_calcification:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 冠脉钙化
+  only:
+    - tags
+  when: manual
+
+perf_heart:
+  stage: test_k8s_perf_1
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 冠脉全开
+  only:
+    - tags
+  when: manual
+
+perf_chest_c5_neck_heart:
+  stage: test_k8s_perf_3
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 结节_全肺_肺炎_骨折_骨密度+头颈全开+冠脉全开
+  only:
+    - tags
+  when: manual
+
+perf_chest_neck_heart:
+  stage: test_k8s_perf_3
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml performance ${CI_COMMIT_TAG} ${MODEL_NAME} 胸肺全开+头颈全开+冠脉全开
+  only:
+    - tags
+  when: manual
+
+consistency-test:
+  stage: test_k8s_consis
+  image: $LINT_IMAGE
+  retry: 2
+  script:
+    - MODEL_NAME=`echo $CI_COMMIT_TAG | sed -n 's/.*-\(m[0-9]\+\.[0-9]\+\.[0-9]\+\)\(.*\)/\1/p'`
+    - echo "`date` MODEL_NAME=${MODEL_NAME}"
+    - python scripts/auto-test.py ct-radiology scripts/auto-test.yml consistency ${CI_COMMIT_TAG} ${MODEL_NAME} 胸肺全开+头颈全开+冠脉全开
+  only:
+    - tags
+  when: manual
