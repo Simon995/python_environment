@@ -2,21 +2,45 @@ import subprocess
 import sys
 
 # 定义两种排除模式格式：正则表达式（用于支持正则的工具）和glob模式（用于支持glob的工具）
-EXCLUDE_REGEX = r".*/(train|file)(/.*)?"  # 精确匹配train或file目录及其子目录（正则表达式）
+EXCLUDE_REGEX = (
+    r".*/(train|file)(/.*)?"  # 精确匹配train或file目录及其子目录（正则表达式）
+)
 EXCLUDE_GLOB = "train,file,**/train/**,**/file/**"  # 显式包含顶层目录的Glob模式
 
 
 def run_isort():
     """Run isort (使用Glob模式排除)"""
     print("Running isort...")
-    subprocess.run(["isort", ".", "--profile", "black", "--line-length", "119", "--skip", EXCLUDE_GLOB], check=True)
+    subprocess.run(
+        [
+            "isort",
+            ".",
+            "--profile",
+            "black",
+            "--line-length",
+            "119",
+            "--skip",
+            EXCLUDE_GLOB,
+        ],
+        check=True,
+    )
 
 
 def run_black():
     """Run black (使用正则表达式排除)"""
     print("Running black...")
     subprocess.run(
-        ["black", ".", "--target-version", "py311", "--line-length", "119", "--exclude", EXCLUDE_REGEX], check=True
+        [
+            "black",
+            ".",
+            "--target-version",
+            "py311",
+            "--line-length",
+            "119",
+            "--exclude",
+            EXCLUDE_REGEX,
+        ],
+        check=True,
     )
 
 

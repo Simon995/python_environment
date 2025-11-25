@@ -36,7 +36,7 @@ source .venv/bin/activate      # Linux/macOS
 **选项 B：在指定位置创建**
 
 ```
-uv venv ~/venvs/openmind_uv --python 3.10.5
+uv venv ~/venvs/openmind_uv --python 3.10
 
 # 激活
 source ~/venvs/openmind_uv/bin/activate
@@ -81,7 +81,7 @@ uv sync --active --python 3.12.6
 uv run script.py            # 在虚拟环境中运行脚本 (无需显式激活)
 uv run python               # 进入虚拟环境的 Python 交互式终端
 # 临时环境运行 (不污染当前环境)
-uv run --with requests script.py  
+uv run --with requests script.py
 ```
 
 **🐍 Python 版本管理**
@@ -205,13 +205,19 @@ bash scripts/build_project.sh
 
 由于配置了 `manual` 阶段，请使用以下命令进行**全量检查与自动修复**：
 
-```
+```bash
 # 推荐：运行所有手动阶段的钩子 (Ruff, Clang-format, MyPy 等)
 pre-commit run --hook-stage manual -a
 ```
 
 - **常规全量检查**：`pre-commit run -a` (仅运行基础钩子)
 - **临时跳过某检查**：`SKIP=clang-tidy-conda pre-commit run --hook-stage manual -a`
+
+### 4.pre-commit常用命令
+
+```bash
+pre-commit autoupdate  # 自动更新pre-commit配置版本号，容易造成一些版本不兼容
+```
 
 ## 其他常用工具
 
@@ -239,11 +245,11 @@ from algorithms.sort import merge_sort
 
    - 检查 `pyproject.toml` 中的 `[[tool.uv.index]]`，默认已配置阿里云镜像。
 
-2. **CUDA 版本不匹配？**
+1. **CUDA 版本不匹配？**
 
    - 当前配置强制使用 CUDA 12.4 (`cu124`)。如果显卡驱动较旧，请升级驱动或在 `pyproject.toml` 中修改为 `cu118`。
 
-3. **验证 PyTorch 安装**
+1. **验证 PyTorch 安装**
 
    ```
    uv run python -c "import torch; print(f'Torch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"

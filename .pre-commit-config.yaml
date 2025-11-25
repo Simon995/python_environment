@@ -46,7 +46,7 @@ repos:
   # 通用基础检查 (Generic)
   # -------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -68,14 +68,14 @@ repos:
   # Python: Ruff (Linting + Formatting)
   # -------------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.0  # 使用较新的稳定版本
+    rev: v0.14.6  # 使用较新的稳定版本
     hooks:
       # Lint: 静态分析与自动修复
       - id: ruff
         name: ruff-lint (global)
         types: [python]  # 匹配所有 .py 文件，不限目录
         args: ["--fix", "--unsafe-fixes"]
-      
+
       # Format: 代码格式化 (替代 Black)
       - id: ruff-format
         name: ruff-format (global)
@@ -85,7 +85,7 @@ repos:
   # Python: MyPy (Type Checking)
   # -------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.1
+    rev: v1.18.2
     hooks:
       - id: mypy
         name: mypy (global)
@@ -101,18 +101,18 @@ repos:
   # C/C++: Clang-Format
   # -------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v18.1.8
+    rev: v21.1.6
     hooks:
       - id: clang-format
         name: clang-format (global)
         # 匹配 C, C++, C#, Objective-C 等相关文件
-        types_or: [c++, c, cuda] 
+        types_or: [c++, c, cuda]
 
   # -------------------------------------------------------------------------
   # C/C++: Clang-Tidy (Static Analysis)
   # -------------------------------------------------------------------------
   - repo: https://github.com/quantco/pre-commit-mirrors-clang-tidy
-    rev: 18.1.1
+    rev: 21.1.6
     hooks:
       - id: clang-tidy-conda
         name: clang-tidy (global)
@@ -126,7 +126,7 @@ repos:
   # Shell / Bash
   # -------------------------------------------------------------------------
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
         name: shellcheck (global)
@@ -134,7 +134,7 @@ repos:
         args: ["--severity=warning"]
 
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: v3.8.0
+    rev: v3.12.0-2
     hooks:
       - id: shfmt
         name: shfmt (global)
@@ -145,7 +145,7 @@ repos:
   # Markdown
   # -------------------------------------------------------------------------
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.17
+    rev: 0.7.19  # 修改此处：从 1.0.0 降级到 0.7.19 以解决插件兼容性问题
     hooks:
       - id: mdformat
         name: mdformat (global)
@@ -159,7 +159,7 @@ repos:
   # Spell Check (Codespell)
   # -------------------------------------------------------------------------
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.3.0
+    rev: v2.4.1
     hooks:
       - id: codespell
         name: codespell (global)

@@ -90,7 +90,7 @@ release-package-job: # pyproject.yaml 待升级
   script:
     # check: $CI_COMMIT_TAG vs $POETRY_VERSION
     - POETRY_VERSION=$(poetry version | cut -d " " -f 2)
-    - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG#*-} 
+    - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG#*-}
     - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG_MIDDLE%-*}
     - CI_COMMIT_TAG_MIDDLE=${CI_COMMIT_TAG_MIDDLE//m/}
     - if [ "$CI_COMMIT_TAG_MIDDLE" != "$POETRY_VERSION" ]; then echo "tag($CI_COMMIT_TAG_MIDDLE) != poetry version($POETRY_VERSION)" && exit 1; fi
